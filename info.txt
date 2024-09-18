@@ -1,0 +1,25 @@
+https://tamrakar-shreyaa.medium.com/implement-rabbitmq-messaging-between-two-laravel-2348a00a0805
+
+docker run --rm -v $(pwd):/app composer create-project --prefer-dist laravel/laravel producer-app
+docker run --rm -v $(pwd):/app composer create-project --prefer-dist laravel/laravel consumer-app
+docker exec -it producer-service-app php artisan make:class Services/RabbitMQService
+docker exec -it producer-service-app composer require php-amqplib/php-amqplib
+docker exec -it producer-service-app php artisan make:controller MessageController
+
+docker exec -it producer-service-app php artisan optimize
+docker exec -it producer-service-app composer dump-autoloa
+
+docker exec -it consumer-service-app php artisan optimize
+docker exec -it consumer-service-app composer dump-autoloa
+docker exec -it consumer-service-app php artisan make:class Services/RabbitMQService
+
+docker exec -it consumer-service-app php artisan make:command ConsumeMessages
+
+docker exec -it consumer-service-app php artisan consume:messages --no-stop
+php artisan consume:messages --no-stop
+
+
+
+
+
+https://bobcares.com/blog/docker-php-enable-opcache/#:~:text=Speeding%20up%20PHP%20Docker%20with%20OpCache&text=When%20enabled%2C%20it%20significantly%20improves,%2C%20according%20to%20php.net.
