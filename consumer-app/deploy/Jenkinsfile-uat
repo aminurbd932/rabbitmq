@@ -1,0 +1,124 @@
+pipeline {
+
+    agent any
+
+    environment {
+        NGINX_IMAGE_NAME = "investor-service-nginx-image"
+        PHP_IMAGE_NAME = "investor-service-php-fpm-image"
+        NGINX_CONTAINER_NAME = "investor-webserver"
+        PHP_CONTAINER_NAME = "investor-app"
+        NETWORK_NAME = "uat-net"
+        SUBNET = "172.3.0.0/16"
+        HOST_DIR = "/var/www/html/investor-service"
+        CONTAINER_DIR = "/var/www/html/"
+        HOST_PORT = "802"
+        GIT_URI = "http://192.168.1.15/microfin-dev-next"
+        GIT_BRANCH = "uattest"
+        REMOTE_SERVER="uatnext@192.168.25.232:$HOST_DIR"
+        SERVER_CRED = "uatnext@192.168.25.232"
+        GIT_CREDENTIAL_ID = "4926aa63-f5f0-4c63-8f88-6662b81fdc1e"
+        HOST_IP= "192.168.25.232"
+   }
+
+    stages {
+        
+        stage('Stage-1: Pull Project Form Git') {
+            steps {
+                script {
+                    git branch: "${GIT_BRANCH}", credentialsId: "${GIT_CREDENTIAL_ID}", url: "${GIT_URI}/investor-service"
+                    echo("================================================")
+                    echo "     Project Successfully Pulled Form Git"
+                    echo("================================================")
+                }
+            }
+        }
+
+
+        stage('Stage-2: Investor Service Copy to Deployment Server') {
+            steps {
+                script {
+                    sshagent(credentials: ['uatnext-key-232']) {
+                        sh '''
+                          rsync -O -rltvz --exclude=".git/" . $REMOTE_SERVER
+                        '''
+                    }
+                    echo("==================================================")
+                    echo " Project Successfully Copied to Deployment Server"
+                    echo("==================================================")
+                }
+            }                       
+        }
+        
+      
+        stage('Stage-3: App Deployment') {
+            steps {
+                script {
+                    sshagent(credentials: ['uatnext-key-232']) {
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no $SERVER_CRED "cd ${HOST_DIR} && mv codes/.env.example codes/.env"
+                        ssh -o StrictHostKeyChecking=no ${SERVER_CRED} "cd ${HOST_DIR} && docker build --no-cache \
+                            --build-arg APP_ENV=${APP_ENV} \
+                            --build-arg APP_DEBUG=${APP_DEBUG} \
+                            --build-arg DB_HOST=${DB_HOST} \
+                            --build-arg DB_DATABASE=${DB_DATABASE} \
+                            --build-arg DB_USERNAME=${DB_USERNAME} \
+                            --build-arg DB_PASSWORD=${DB_PASSWORD} \
+                            --build-arg REDIS_HOST=${REDIS_HOST} \
+                            --build-arg REDIS_PASSWORD=${REDIS_PASSWORD} \
+                            --build-arg RDS_TOKEN_DB=${RDS_TOKEN_DB} \
+                            --build-arg RDS_AUTHORIZATION_DB=${RDS_AUTHORIZATION_DB} \
+                            --build-arg RDS_MFI_DB=${RDS_MFI_DB} \
+                            --build-arg API_URL=${API_URL} \
+                            --build-arg AUTH_SEVICE=${AUTH_SEVICE} \
+                            --build-arg USER_SEVICE=${USER_SEVICE} \
+                            --build-arg CORE_SEVICE=${CORE_SEVICE} \
+                            --build-arg SECURITY_IP=${SECURITY_IP} \
+                            -t $PHP_IMAGE_NAME \
+                            -f docker/app/app.Dockerfile ."
+                        ssh -o StrictHostKeyChecking=no $SERVER_CRED "docker tag $PHP_IMAGE_NAME:latest $PHP_IMAGE_NAME:$IMAGE_VERSION"
+                        ssh -o StrictHostKeyChecking=no $SERVER_CRED "docker network create --subnet=$SUBNET $NETWORK_NAME || true"
+                        ssh -o StrictHostKeyChecking=no $SERVER_CRED "docker stop $PHP_CONTAINER_NAME || true"
+                        ssh -o StrictHostKeyChecking=no $SERVER_CRED "docker rm $PHP_CONTAINER_NAME || true"
+                        ssh -o StrictHostKeyChecking=no $SERVER_CRED "docker run -d \
+                            --env-file ${HOST_DIR}/docker/.env \
+                            --name $PHP_CONTAINER_NAME \
+                            --network $NETWORK_NAME \
+                            -p 9001:9000 \
+                            -v /var/www/html/vendor/ \
+                            $PHP_IMAGE_NAME:$IMAGE_VERSION"
+                    '''
+                    }
+                    echo("================================================")
+                    echo "         App Deployed Successfully"
+                    echo("================================================")
+                }                       
+            }
+        }
+
+        stage('Stage-4: Webserver Deployment') {
+            steps {
+                script {
+                    sshagent(credentials: ['uatnext-key-232']) {
+                       sh '''
+                          ssh -o StrictHostKeyChecking=no $SERVER_CRED "cd $HOST_DIR && docker build --no-cache \
+                            --build-arg HOST_IP=${HOST_IP} \
+                            -t $NGINX_IMAGE_NAME \
+                            -f docker/web/web.Dockerfile ."
+                          ssh -o StrictHostKeyChecking=no $SERVER_CRED "docker tag $NGINX_IMAGE_NAME:latest $NGINX_IMAGE_NAME:$IMAGE_VERSION"
+                          ssh -o StrictHostKeyChecking=no $SERVER_CRED "docker stop $NGINX_CONTAINER_NAME || true"
+                          ssh -o StrictHostKeyChecking=no $SERVER_CRED "docker rm $NGINX_CONTAINER_NAME || true"
+                          ssh -o StrictHostKeyChecking=no $SERVER_CRED "docker run -d \
+                            --name $NGINX_CONTAINER_NAME \
+                            -p $HOST_PORT:80 \
+                            --network=$NETWORK_NAME \
+                            $NGINX_IMAGE_NAME:$IMAGE_VERSION"
+                       '''
+                   }
+                    echo("================================================")
+                    echo "       Webserver Deployed Successfully"
+                    echo("================================================")
+                }                       
+            }
+        }
+    }
+}

@@ -1,0 +1,9 @@
+CREATE USER 'riad'@'localhost' IDENTIFIED BY 'password';
+GRANT ALL PRIVILEGES ON *.* TO 'riad'@'localhost';
+FLUSH PRIVILEGES;
+CREATE USER 'riad'@'%' IDENTIFIED BY 'password';
+GRANT ALL PRIVILEGES ON *.* TO 'riad'@'%';
+FLUSH PRIVILEGES;
+
+CREATE DATABASE IF NOT EXISTS microfin_v3_akk;
+CREATE DATABASE IF NOT EXISTS archive_mf_ava;
